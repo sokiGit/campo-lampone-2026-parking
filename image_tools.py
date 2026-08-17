@@ -1,3 +1,5 @@
+from typing import TypedDict
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
@@ -12,7 +14,14 @@ def extract_color_mask_min(img_hsv: MatLike, hue_min: int, hue_max: int, sat_min
     mask = cv2.inRange(img_hsv, min_c, max_c)
     return mask
 
+class _Pos(TypedDict):
+    x: int
+    y: int
+
 class MaskBoundingBox:
+    from_pos: _Pos
+    to_pos: _Pos
+
     def __init__(self, from_x: int, from_y: int, to_x: int, to_y: int) -> None:
         self.from_pos = {
             'x': from_x,
