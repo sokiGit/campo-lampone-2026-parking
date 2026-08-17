@@ -1,10 +1,7 @@
-import sys
-
 import cv2
 import numpy as np
-from numpy.ma.core import MaskType
-import requests
 from cv2.typing import MatLike
+
 
 def extract_color_mask_min(img_hsv: MatLike, hue_min: int, hue_max: int, sat_min: int = 100, val_min: int = 20) -> MatLike:
 
@@ -49,3 +46,6 @@ def find_mask_bounding_box(mask: MatLike) -> MaskBoundingBox:
 
 def bgr_to_hsv(img_bgr: MatLike) -> MatLike:
     return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+
+def find_local_box_center(box_w: int, box_h: int) -> tuple[int, int]:
+    return (int(box_w / 2), int(box_h / 2))
