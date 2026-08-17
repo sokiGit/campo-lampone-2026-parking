@@ -1,0 +1,279 @@
+{
+  "cells": [
+    {
+      "x": 0,
+      "y": 0,
+      "box_center": [
+        89,
+        72
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": ["electric"]
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "box_center": [
+        89,
+        136
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": ["disabled"]
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "box_center": [
+        89,
+        200
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 0,
+      "y": 3,
+      "box_center": [
+        89,
+        264
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 0,
+      "y": 4,
+      "box_center": [
+        89,
+        328
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "box_center": [
+        193,
+        72
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "box_center": [
+        193,
+        136
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "box_center": [
+        193,
+        200
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 1,
+      "y": 3,
+      "box_center": [
+        193,
+        264
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 1,
+      "y": 4,
+      "box_center": [
+        193,
+        328
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "box_center": [
+        297,
+        72
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "box_center": [
+        297,
+        136
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "box_center": [
+        297,
+        200
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 2,
+      "y": 3,
+      "box_center": [
+        297,
+        264
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 2,
+      "y": 4,
+      "box_center": [
+        297,
+        328
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 3,
+      "y": 0,
+      "box_center": [
+        401,
+        72
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 3,
+      "y": 1,
+      "box_center": [
+        401,
+        136
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 3,
+      "y": 2,
+      "box_center": [
+        401,
+        200
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 3,
+      "y": 3,
+      "box_center": [
+        401,
+        264
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 3,
+      "y": 4,
+      "box_center": [
+        401,
+        328
+      ],
+      "type": "road",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 4,
+      "y": 0,
+      "box_center": [
+        505,
+        72
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 4,
+      "y": 1,
+      "box_center": [
+        505,
+        136
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 4,
+      "y": 2,
+      "box_center": [
+        505,
+        200
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 4,
+      "y": 3,
+      "box_center": [
+        505,
+        264
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    },
+    {
+      "x": 4,
+      "y": 4,
+      "box_center": [
+        505,
+        328
+      ],
+      "type": "parking",
+      "occupied": true,
+      "features": []
+    }
+  ]
+}
