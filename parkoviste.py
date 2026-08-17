@@ -5,6 +5,9 @@ import image_tools
 
 cap = cv2.VideoCapture("http://gateson.lan/stream")
 
+# Minimální počet bílých pixelů pro aktivaci (přizpůsob podle potřeby)
+MIN_PIXELS = 100
+
 while True:
     ret, image = cap.read()
     if not ret:
@@ -13,22 +16,20 @@ while True:
     # 1. Převod obrázku z BGR do HSV
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    # 2. Definoování rozsahů pro červenou barvu v HSV
-    # Červená barva v HSV přetéká přes hranici 0/180°, proto potřebujeme dva rozsahy
-    # Hodnota S (saturace) nastavená na min. 100 spolehlivě odfiltruje bílou (bílá má S blízko 0)
-    lower_red1 = np.array([40, 100, 100])
-    upper_red1 = np.array([60, 255, 255])
-
     # 3. Vytvoření masek
     mask1 = image_tools.extract_color_mask_min(hsv, 100, 140)
 
-    # 4. Spojení obou masek
-    # Výsledná maska obsahuje 255 (bílou) na místech červené a 0 (černou) jinde
+    # Spočítání bílých pixelů v masce
+    white_pixels = cv2.countNonZero(mask1)
 
+    # Podmínka, která vrátí True při rozsvícení LED
+    if white_pixels > MIN_PIXELS:
+        led_sviti = True
+        print(f"Modrá LED svítí! ({white_pixels} pixelů)")
+    else:
+        led_sviti = False
 
-    # Zobrazení
     cv2.imshow("Původní obraz", mask1)
-    #cv2.imshow("Červená jako bílá", red_as_white)
 
     if cv2.waitKey(1) == ord("q"):
         break
