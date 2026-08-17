@@ -1,3 +1,4 @@
+import json
 import sys
 
 import cv2
@@ -5,11 +6,20 @@ import numpy as np
 import requests
 from cv2.typing import MatLike
 
+import image_tools
+
 COLOR_THR = 150
+ROAD_COLS = [0, 2, 4]
+ROAD_ROWS = [0, 4]
+GRID_SIZE = [5, 5]
 
 def std_thresh(img_in: MatLike) -> MatLike:
     _, out = cv2.threshold(img_in, COLOR_THR, 255, cv2.THRESH_BINARY)
     return out
+
+car_pos = [255, 255]
+
+car_grid_p =
 
 if __name__ == '__main__':
     resp = requests.get("http://roofson.lan/", timeout=30)
@@ -33,24 +43,20 @@ if __name__ == '__main__':
     min_r_1 = np.array([170, 100, 20])
     max_r_1 = np.array([180, 255, 255])
 
-    hsv_r_0 = cv2.inRange(hsv, min_r_0, max_r_0)
-    hsv_r_1 = cv2.inRange(hsv, min_r_1, max_r_1)
+    hsv_r_0 = image_tools.extract_color_mask_min(hsv, 0, 10)
+    hsv_r_1 = image_tools.extract_color_mask_min(hsv, 170, 180)
 
     hsv_r = cv2.bitwise_or(hsv_r_0, hsv_r_1)
 
     conts, hierarchy = cv2.findContours(hsv_r, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    #print(conts)
-
-    total_h, total_w, _ = hsv.shape
+    total_h, total_w = hsv.shape[:2]
 
     bbs = []
 
     bb_dim = [[], []]
 
     bb_img = np.zeros((total_h, total_w, 3))
-
-    grid_size = [5, 5]
 
     for c in conts:
         x,y,w,h = cv2.boundingRect(c)
@@ -66,33 +72,89 @@ if __name__ == '__main__':
             bb_dim[1][0] = max(bb_dim[1][0], x+w)
             bb_dim[1][1] = max(bb_dim[1][1], y+h)
 
-    bb_w = abs(bb_dim[0][0] - bb_dim[1][0])
-    bb_h = abs(bb_dim[0][1] - bb_dim[1][1])
+    bb = image_tools.find_mask_bounding_box(hsv_r)
 
-    for box_x in range(grid_size[0]):
-        for box_y in range(grid_size[1]):
+    bb_w = abs(bb.from_pos['x'] - bb.to_pos['x'])
+    bb_h = abs(bb.from_pos['y'] - bb.to_pos['y'])
+
+    data_grid = {
+        "cells": []
+    }
+
+    for box_x in range(GRID_SIZE[0]):
+        for box_y in range(GRID_SIZE[1]):
             box_x_px = [
-                int(box_x * (bb_w / grid_size[0])),
-                int((box_x + 1) * (bb_w / grid_size[0]))
+                int(box_x * (bb_w / GRID_SIZE[0])),         #FROM
+                int((box_x + 1) * (bb_w / GRID_SIZE[0]))    #TO
             ]
             box_y_px = [
-                int(box_y * (bb_h / grid_size[1])),
-                int((box_y + 1) * (bb_h / grid_size[1]))
+                int(box_y * (bb_h / GRID_SIZE[1])),         #FROM
+                int((box_y + 1) * (bb_h / GRID_SIZE[1]))    #TO
             ]
             cv2.rectangle(img, (bb_dim[0][0] + box_x_px[0], bb_dim[0][1] + box_y_px[0]), (bb_dim[0][0] + box_x_px[1], bb_dim[0][1] + box_y_px[1]), (255,0,0), 2)
 
+            box_center = image_tools.find_local_box_center(
+                box_x_px[1] - box_x_px[0],
+                box_y_px[1] - box_y_px[0]
+            )
+
+
+            print(f"W: {box_x_px[1] - box_x_px[0]}; H: {box_y_px[1] - box_y_px[0]}")
+            print(f"Box Center: {box_center[0]}; {box_center[1]}")
+
+            box_center_pos_total = (
+                bb_dim[0][0] + box_x_px[0] + box_center[0],
+                bb_dim[0][1] + box_y_px[0] + box_center[1]
+            )
+
+            cell_type = "parking" if box_x in ROAD_COLS and box_y not in ROAD_ROWS else "road"
+            features = [] # disabled_only, charging
+            occupied = False
+
+            data_grid["cells"].append({
+                "x": box_x,
+                "y": box_y,
+                "box_center": box_center_pos_total,
+                "type": cell_type,
+                "occupied": occupied,
+                "features": features
+            })
+
+            _ = cv2.circle(
+                img,
+                (
+                    box_center_pos_total[0],
+                    box_center_pos_total[1]
+                ),
+                4,
+                (255, 255, 0),
+                -1
+            )
+
         print("drawing cont rect")
 
-    cv2.rectangle(img,(bb_dim[0][0],bb_dim[0][1]),(bb_dim[1][0], bb_dim[1][1]),(0,255,0),2)
+    _ = cv2.rectangle(img,(bb_dim[0][0],bb_dim[0][1]),(bb_dim[1][0], bb_dim[1][1]),(0,255,0),2)
 
+    _ = cv2.circle(
+        img,
+        (car_pos[0], car_pos[1]),
+        6,
+        (127, 255, 63),
+        -1
+    )
     cv2.imshow("OUT", img)
 
     tr = None
 
+    print(json.dumps(data_grid))
+
     # Charger:  Green
     # Disabled: Blue
 
-    cv2.drawContours(img, conts, -1, (0, 255, 0), 3)
+    _ = cv2.drawContours(img, conts, -1, (0, 255, 0), 3)
+
+
+
 
     #cv2.imshow("OUT", img)
 
