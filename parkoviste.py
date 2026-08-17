@@ -1,3 +1,5 @@
+import datetime
+import urllib.request
 import cv2
 import numpy as np
 
@@ -7,6 +9,10 @@ cap = cv2.VideoCapture("http://gateson.lan/stream")
 
 # Minimální počet bílých pixelů pro aktivaci (přizpůsob podle potřeby)
 MIN_PIXELS = 100
+CAPTURE_URL = "http://gateson.lan/capture?delay=3000"
+
+# Pomocná proměnná pro sledování předchozího stavu
+led_sviti = False
 
 while True:
     ret, image = cap.read()
@@ -24,8 +30,21 @@ while True:
 
     # Podmínka, která vrátí True při rozsvícení LED
     if white_pixels > MIN_PIXELS:
+        # Uloží se pouze při PRVNÍM detekování rozsvícení (přechod z False na True)
+        if not led_sviti:
+            print(f"Modrá LED rozsvícena! Stahuji obrázek...")
+
+            # Vytvoření unikátního názvu souboru s časovým razítkem
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"capture_{timestamp}.jpg"
+
+            try:
+                urllib.request.urlretrieve(CAPTURE_URL, filename)
+                print(f"Obrázek uložen jako: {filename}")
+            except Exception as e:
+                print(f"Chyba při stahování: {e}")
+
         led_sviti = True
-        print(f"Modrá LED svítí! ({white_pixels} pixelů)")
     else:
         led_sviti = False
 
@@ -34,5 +53,5 @@ while True:
     if cv2.waitKey(1) == ord("q"):
         break
 
-cap.release()
+cap.release
 cv2.destroyAllWindows()
