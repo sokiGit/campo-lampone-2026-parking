@@ -13,7 +13,7 @@ reader = easyocr.Reader(["en"], gpu=False)
 cap = cv2.VideoCapture("http://gateson.lan/stream")
 
 # Minimální počet bílých pixelů pro aktivaci (přizpůsob podle potřeby)
-MIN_PIXELS = 5
+MIN_PIXELS = 100
 CAPTURE_URL = "http://gateson.lan/capture?delay=5"
 
 # Pomocná proměnná pro sledování předchozího stavu
