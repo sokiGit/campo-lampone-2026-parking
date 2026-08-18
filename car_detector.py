@@ -83,3 +83,30 @@ def detect_car_positions(img: MatLike):
             continue
 
     return car_positions
+
+def find_suitable_car_parking_spot(data_grid: image_tools.Grid, required_features: list[str]) -> tuple[int, int] | None:
+    cells = data_grid["cells"]
+    fallback_cell = None
+
+    for cell in cells:
+        # Skip non-parking or occupied spots
+        if cell["type"] != "parking" or cell["reserved"] or cell["occupied"]:
+            continue
+
+        # Save first free spot in case no spot matches the required features
+        if fallback_cell is None:
+            fallback_cell = cell
+
+        # Check if every required feature exists in cell["features"] list
+        cell_features = cell.get("features", [])
+        if all(feature in cell_features for feature in required_features):
+            print(f"FOUND MATCHING SPOT: x={cell['x']}, y={cell['y']} ({cell_features})")
+            return (cell["x"], cell["y"])
+
+    # If strict matching is required (do NOT accept a spot without the feature), return None here
+    if fallback_cell:
+        print(f"NO SPOT HAD {required_features}. USING FALLBACK: x={fallback_cell['x']}, y={fallback_cell['y']}")
+        return (fallback_cell["x"], fallback_cell["y"])
+
+    print("NO PARKING SPOTS AVAILABLE")
+    return None

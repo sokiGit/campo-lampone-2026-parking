@@ -19,7 +19,6 @@ class _Pos(TypedDict):
     x: int
     y: int
 
-
 class MaskBoundingBox:
     from_pos: _Pos
     to_pos: _Pos
@@ -43,7 +42,8 @@ class Cell(TypedDict):
     box_center: tuple[int, int]
     type: str
     occupied: bool
-    features: list[Any]
+    reserved: bool
+    features: list[str]
 
 
 class Grid(TypedDict):
@@ -93,7 +93,12 @@ def build_grid(img: MatLike, return_debug: bool = False) -> Grid:
                 grid_bb.from_pos['y'] + box_y_px[0] + box_center[1],
             )
 
-            cell_type = "parking" if box_x in ROAD_COLS and box_y not in ROAD_ROWS else "road"
+            if box_y == ROAD_ROWS[0] or box_y == ROAD_ROWS[-1]:
+                # edge case (top/bottom roads)
+                cell_type = "parking" if box_x == ROAD_COLS[0] or box_x == ROAD_COLS[-1] else "road"
+            else:
+                cell_type = "parking" if box_x in ROAD_COLS and box_y not in ROAD_ROWS else "road"
+
 
             # features
             cropped_cell_img = img[box_y_px[0] + grid_bb.from_pos['y']:box_y_px[1] + grid_bb.from_pos['y'], box_x_px[0] + grid_bb.from_pos['x']:box_x_px[1] + grid_bb.from_pos['x'], :]
@@ -132,7 +137,7 @@ def build_grid(img: MatLike, return_debug: bool = False) -> Grid:
             green_mask = cv2.dilate(green_mask, np.ones((2, 2), np.uint8))
             blue_mask = cv2.dilate(blue_mask, np.ones((2, 2), np.uint8))
 
-            _ = cv2.rectangle(img_copy, (box_x_px[0] + grid_bb.from_pos['x'], box_y_px[0] + grid_bb.from_pos['y']), (box_x_px[1] + grid_bb.from_pos['x'], box_y_px[1] + grid_bb.from_pos['y']), (127, 255, 63), 1)
+            _ = cv2.rectangle(img_copy, (box_x_px[0] + grid_bb.from_pos['x'], box_y_px[0] + grid_bb.from_pos['y']), (box_x_px[1] + grid_bb.from_pos['x'], box_y_px[1] + grid_bb.from_pos['y']), (127, 63, 63), 1)
 
             cells.append({
                 "x": box_x,
@@ -140,6 +145,7 @@ def build_grid(img: MatLike, return_debug: bool = False) -> Grid:
                 "box_center": box_center_pos_total,
                 "type": cell_type,
                 "occupied": False,
+                "reserved": False,
                 "features": features,
             })
 
@@ -168,7 +174,7 @@ def debug_draw_grid(img: MatLike, grid: Grid):
         img,
         origin,
         (grid["bb"].to_pos['x'], grid["bb"].to_pos['y']),
-        (0, 255, 0), 2,
+        (0, 127, 0), 2,
     )
 
     for cell in grid["cells"]:
@@ -178,7 +184,11 @@ def debug_draw_grid(img: MatLike, grid: Grid):
         y1 = origin[1] + int((cell["y"] + 1) * (bb_h / n_rows))
 
         cv2.rectangle(img, (x0, y0), (x1, y1), (255, 0, 0), 1)
-        cv2.circle(img, cell["box_center"], 3, (0, 255, 255), -1)  # yellow dot
+        if cell["type"] == "parking":
+            color = (0, 255, 0) if cell["reserved"] else (0, 127, 0)
+            cv2.circle(img, cell["box_center"], 3, color, -1)  # yellow dot
+        else:
+            cv2.circle(img, cell["box_center"], 3, (0, 255, 255), -1)  # yellow dot
         if cell["features"] and cell["features"].__len__() > 0:
             txt = ""
             if "electric_charger" in cell["features"]:

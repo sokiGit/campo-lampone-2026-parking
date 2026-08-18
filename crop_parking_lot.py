@@ -4,11 +4,11 @@ import random
 from time import time
 
 import cv2
+import requests
 
 import car_detector
 import data_server
 import image_tools
-
 
 def find_cell(data_grid: image_tools.Grid, x: int, y: int):
     return next(
@@ -23,6 +23,8 @@ if __name__ == '__main__':
     img = image_tools.fetch_roofson_image()
     if img is None:
         sys.exit()
+
+    img = img[10:-10,10:-10,:]
 
     data_grid: image_tools.Grid = image_tools.build_grid(img, return_debug=True)
     bb_w, bb_h = data_grid["bb"].get_size()
@@ -39,17 +41,11 @@ if __name__ == '__main__':
 
     data_server.start(port=8000)
 
-    active_cars = {
-        "ABC123": {
-            "pos_px": (0, 0),
-            "pos_grid": (0, 0),
-            "last_seen": time(),
-        }
-    }
+    active_cars = {}
 
     while cv2.waitKey(1) != ord("q"):
 
-        img = image_tools.fetch_roofson_image()
+        img = image_tools.fetch_roofson_image()[10:-10,10:-10,:]
         if img is None:
             continue
 
@@ -64,15 +60,23 @@ if __name__ == '__main__':
 
         car_positions = car_detector.detect_car_positions(img_copy)
 
+        for cell in data_grid["cells"]:
+            cell["occupied"] = False
+            cell["reserved"] = False
+
+        active_target_cells = {
+            car["target_cell"] for car in active_cars.values() if car.get("target_cell")
+        }
+
+        for cell in data_grid["cells"]:
+            if (cell["x"], cell["y"]) in active_target_cells:
+                cell["reserved"] = True
+
         for car_pos_data in car_positions:
             car_pos = car_pos_data["pos"]
             angle = car_pos_data["angle"]
 
             _ = cv2.circle(img, car_pos, 6, (127, 255, 63), -1)
-
-            txt_pos = (car_pos[0], car_pos[1] - 10)
-
-            _ = cv2.putText(img, f"{angle:.0f} deg", txt_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (127, 255, 63), 1)
 
             car_grid_p = [
                 floor((car_pos[0] - data_grid["bb"].from_pos["x"]) / (bb_w / n_cols)),
@@ -92,26 +96,56 @@ if __name__ == '__main__':
             is_tracked = False
 
             for car_id, car_data in active_cars.items():
-                # A more robust Euclidean distance check
                 dist = ((car_data["pos_px"][0] - car_pos[0])**2 + (car_data["pos_px"][1] - car_pos[1])**2)**0.5
 
                 if dist <= CAR_TRACKING_LENIENCY_PX:
                     car_data["last_seen"] = time()
-                    car_data["pos_px"] = car_pos  # Keep the actual exact coordinate!
-                    car_data["pos_grid"] = car_grid_p # Update the grid label
+                    car_data["pos_px"] = car_pos
+                    car_data["pos_grid"] = car_grid_p
+                    car_data["angle"] = angle
+
                     is_tracked = True
                     # print(f"Continuing tracking for car: {car_id}")
                     break
 
             if not is_tracked:
-                car_id = f"car_{random.randint(0, 1000):x}"
-                print(f"Tracking new car: {car_id}")
+                if car_grid_p[0] > data_grid["size"][0] - 1 or car_grid_p[1] > data_grid["size"][1] - 1:
+                    car_id = f"car_{random.randint(0, 1000):x}"
+                    print(f"Tracking new car: {car_id}")
 
-                active_cars[car_id] = {
-                    "pos_px": car_pos,
-                    "pos_grid": car_grid_p,
-                    "last_seen": time(),
-                }
+                    spz_str = None
+                    required_features = ["electric_charger"]
+
+                    try:
+                        spz_req = requests.get("http://campo4.lan:8000/get_last_spz")
+
+                        if spz_req.status_code == 200:
+                            spz_data = spz_req.json()
+                            spz_str = spz_data.get("spz", None)
+                            #required_features = spz_data.get("required_features", [])
+                    except requests.exceptions.RequestException as e:
+                        print(f"Failed to fetch SPZ data using fallback\nError: {e}")
+
+                    target_cell = car_detector.find_suitable_car_parking_spot(data_grid, required_features)
+
+                    active_cars[car_id] = {
+                        "pos_px": car_pos,
+                        "pos_grid": car_grid_p,
+                        "angle": angle,
+                        "last_seen": time(),
+                        "spz": "debug_spz",#spz_str,
+                        "target_cell": target_cell
+                    }
+
+                    if target_cell:
+                        for cell in data_grid["cells"]:
+                            if cell["x"] == target_cell[0] and cell["y"] == target_cell[1]:
+                                cell["reserved"] = True
+                                break
+
+                else:
+                    print("[WARN] New car is already within the grid!")
+                    continue
 
             print(f"Car Grid Pos: {car_grid_p[0]}; {car_grid_p[1]}")
 
@@ -120,13 +154,39 @@ if __name__ == '__main__':
 
         for car_id in list(active_cars.keys()):
             if current_time - active_cars[car_id]["last_seen"] > timeout_sec:
-                # print(f"Lost track of {car_id}, removing.")
+                print(f"Lost track of {car_id}, removing.")
                 del active_cars[car_id]
 
-        print("New car tracking:")
-        for car_id, car_data in active_cars.items():
-            print(f"  {car_id}: pos_px={car_data['pos_px']}, pos_grid={car_data['pos_grid']}, last_seen={car_data['last_seen']}")
+        if active_cars.__len__() == 0:
+            print("No active cars.")
+        else:
+            print("Car tracking:")
+            for car_id, car_data in active_cars.items():
+                print(f"  {car_id}({car_data.get('spz') if car_data.get('spz') is not None else 'N/A'}): pos_px={car_data['pos_px']}, pos_grid={car_data['pos_grid']}, last_seen={car_data['last_seen']}")
+                car_pos = car_data["pos_px"]
+                spz_txt_pos = (car_pos[0] + 10, car_pos[1] + 5)
+                car_pos_grid = car_data["pos_grid"]
 
-        data_server.publish(data_grid["cells"], car_positions)
+                _ = cv2.putText(img, f"SPZ: {car_data.get('spz') if car_data.get('spz') is not None else 'N/A'}", spz_txt_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (127, 255, 63), 1)
+                angle = car_data.get('angle', -999)
+                ang_txt_pos = (car_pos[0], car_pos[1] - 10)
+                _ = cv2.putText(img, f"{angle:.0f} deg", ang_txt_pos, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (127, 255, 63), 1)
+                _ = cv2.circle(img, car_pos, 3, (255, 127, 255), -1)
+                target_cell = car_data.get('target_cell')
+                if target_cell is not None:
+                    tc_x, tc_y = target_cell
+                    target_cell_pos = None
+                    for cell in data_grid["cells"]:
+                        if cell["x"] == tc_x and cell["y"] == tc_y:
+                            target_cell_pos = cell["box_center"]
+                            break
+                    if target_cell_pos is not None:
+                        _ = cv2.arrowedLine(img, car_pos, target_cell_pos, (127, 255, 63), 1)
+
+        data_server.publish(
+            data_grid["cells"],
+            car_positions,
+            active_cars
+        )
 
         cv2.imshow("OUT", img)
