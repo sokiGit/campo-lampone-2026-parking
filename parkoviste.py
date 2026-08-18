@@ -16,10 +16,9 @@ CAPTURE_URL = "http://gateson.lan/capture?delay=5"
 
 led_sviti = False
 
-# Nové proměnné pro stavový automat a časovač
 spz = ""
-hledat_zelenou = False
-zelena_led_sviti = False
+ceka_na_zelenou = False
+ceka_na_druhou_modrou = False
 konecny_cas = 0
 
 while True:
@@ -29,66 +28,63 @@ while True:
 
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    # 1. Modrá maska pro detekci modré LED
-    mask1 = image_tools.extract_color_mask_min(hsv, 100, 140)
-    white_pixels = cv2.countNonZero(mask1)
+    mask_blue = image_tools.extract_color_mask_min(hsv, 100, 140)
+    blue_pixels = cv2.countNonZero(mask_blue)
 
-    if white_pixels > MIN_PIXELS:
+    mask_green = image_tools.extract_color_mask_min(hsv, 35, 85)
+    green_pixels = cv2.countNonZero(mask_green)
+
+    if blue_pixels > MIN_PIXELS:
         if not led_sviti:
-            print(f"Modrá LED rozsvícena! Stahuji obrázek...")
+            if not ceka_na_zelenou and not ceka_na_druhou_modrou:
+                print(f"Modrá LED rozsvícena! Stahuji obrázek...")
 
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"capture_{timestamp}.jpg"
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"capture_{timestamp}.jpg"
 
-            try:
-                urllib.request.urlretrieve(CAPTURE_URL, filename)
-                print(f"Obrázek uložen jako: {filename}")
+                try:
+                    urllib.request.urlretrieve(CAPTURE_URL, filename)
+                    print(f"Obrázek uložen jako: {filename}")
 
-                results = reader.readtext(filename)
+                    results = reader.readtext(filename)
 
-                spz = ""
-                for bbox, text, prob in results:
-                    clean_text = text.strip().replace(" ", "").upper()
-                    if len(clean_text) >= 4:
-                        spz = clean_text
-                        break
+                    spz = ""
+                    for bbox, text, prob in results:
+                        clean_text = text.strip().replace(" ", "").upper()
+                        if len(clean_text) >= 4:
+                            spz = clean_text
+                            break
 
-                print(f"Přečtená SPZ: {spz}")
+                    print(f"Přečtená SPZ: {spz}")
 
-                # Po vypsání SPZ aktivujeme hledání zeleného světla
-                hledat_zelenou = True
+                    ceka_na_zelenou = True
 
-            except Exception as e:
-                print(f"Chyba při stahování nebo OCR: {e}")
+                except Exception as e:
+                    print(f"Chyba při stahování nebo OCR: {e}")
+
+            elif ceka_na_druhou_modrou and konecny_cas == 0:
+                print(f"Modrá LED opětně rozsvícena! Spouštím odpočet 15 sekund...")
+                konecny_cas = time.time() + 15
+                ceka_na_druhou_modrou = False
 
         led_sviti = True
     else:
         led_sviti = False
 
-    # 2. Hledání zeleného světla po načtení SPZ
-    if hledat_zelenou:
-        mask_green = image_tools.extract_color_mask_min(hsv, 35, 85)
-        green_pixels = cv2.countNonZero(mask_green)
-
+    if ceka_na_zelenou:
         if green_pixels > MIN_PIXELS:
-            if not zelena_led_sviti:
-                print("Zelená LED rozsvícena! Přidávám 15 sekund...")
-                konecny_cas = time.time() + 15
-                zelena_led_sviti = True
-        else:
-            zelena_led_sviti = False
+            print("Zelená LED rozsvícena! Nyní čekám na opětovné rozsvícení modré LED...")
+            ceka_na_zelenou = False
+            ceka_na_druhou_modrou = True
 
-    # 3. Kontrola odpočtu času do 0
     if konecny_cas > 0:
         zbyvajici_cas = konecny_cas - time.time()
 
         if zbyvajici_cas <= 0:
             print(f"Předchozí SPZ {spz} musí odjet z parkoviště!")
-            # Resetujeme časovač a hledání zelené pro další cyklus
             konecny_cas = 0
-            hledat_zelenou = False
 
-    cv2.imshow("Puvodni", mask1)
+    cv2.imshow("Puvodni", mask_blue)
 
     if cv2.waitKey(1) == ord("q"):
         break
