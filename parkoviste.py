@@ -16,11 +16,15 @@ MIN_PIXELS = 100
 CAPTURE_URL = "http://gateson.lan/capture?delay=5"
 
 led_sviti = False
+zelena_sviti_predtem = False
 
 spz = ""
 ceka_na_zelenou = False
 ceka_na_druhou_modrou = False
-konecny_cas = 0
+odpocitavani_bezi = False
+
+cas = 0
+posledni_sekunda = 0
 
 while True:
     ret, image = cap.read()
@@ -32,7 +36,7 @@ while True:
     mask_blue = image_tools.extract_color_mask_min(hsv, 100, 140)
     blue_pixels = cv2.countNonZero(mask_blue)
 
-    if konecny_cas == 0:
+    if not odpocitavani_bezi:
         if blue_pixels > MIN_PIXELS:
             if not led_sviti:
                 if not ceka_na_zelenou and not ceka_na_druhou_modrou:
@@ -70,31 +74,39 @@ while True:
                     print("Zavírám závoru.")
                     urllib.request.urlopen("http://gateson.lan/gate_in?close")
 
-                    # Odpočet zbývajících 10 s (celkem 15 s od otevření závory)
-                    konecny_cas = time.time() + 10
+                    odpocitavani_bezi = True
+                    posledni_sekunda = time.time()
                     ceka_na_druhou_modrou = False
+                    print(f"Začíná odpočet! Zbývá: {cas} s")
 
             led_sviti = True
         else:
             led_sviti = False
 
-        if ceka_na_zelenou:
+        if ceka_na_zelenou or ceka_na_druhou_modrou:
             mask_green = image_tools.extract_color_mask_min(hsv, 35, 85)
             green_pixels = cv2.countNonZero(mask_green)
 
             if green_pixels > MIN_PIXELS:
-                print("Zelená LED rozsvícena! Nyní čekám na opětovné rozsvícení modré LED...")
-                ceka_na_zelenou = False
-                ceka_na_druhou_modrou = True
+                if not zelena_sviti_predtem:
+                    cas += 15
+                    print(f"Zelená rozsvícena! Proměnná cas: {cas} s")
+                    zelena_sviti_predtem = True
+                    ceka_na_zelenou = False
+                    ceka_na_druhou_modrou = True
+            else:
+                zelena_sviti_predtem = False
+                
+    else:
+        if time.time() - posledni_sekunda >= 1.0:
+            cas -= 1
+            posledni_sekunda = time.time()
 
-    if konecny_cas > 0:
-        zbyvajici_cas = konecny_cas - time.time()
-
-        if zbyvajici_cas <= 0:
-            print(f"Čas vypršel! Auto s SPZ {spz} musí odjet z parkoviště!")
-            # Reset kompletního stavu pro další auto
-            konecny_cas = 0
-            spz = ""
+            if cas <= 0:
+                print(f"Čas vypršel! Auto s SPZ {spz} musí odjet z parkoviště!")
+                cas = 0
+                spz = ""
+                odpocitavani_bezi = False
 
     cv2.imshow("Puvodni", mask_blue)
 
