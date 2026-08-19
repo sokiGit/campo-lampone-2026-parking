@@ -26,7 +26,7 @@ pocet_zelenych_misto = 0
 posledni_sekunda = 0
 typ_mista = ""
 
-server = gate_server.start()
+gate_server.start()
 
 while True:
     ret, image = cap.read()
@@ -74,7 +74,7 @@ while True:
                     clean_text = text.strip().replace(" ", "").upper()
                     if len(clean_text) >= 4:
                         spz = clean_text
-                        server.publish(spz)
+                        gate_server.publish(spz)
                         break
 
                 print(f"Přečtená SPZ: {spz}")
