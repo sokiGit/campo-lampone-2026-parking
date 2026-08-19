@@ -5,6 +5,7 @@ import cv2
 import easyocr
 import numpy as np
 import requests
+import gate_server
 
 import image_tools
 
@@ -24,6 +25,8 @@ faze = 1
 pocet_zelenych_misto = 0
 posledni_sekunda = 0
 typ_mista = ""
+
+server = gate_server.start()
 
 while True:
     ret, image = cap.read()
@@ -71,6 +74,7 @@ while True:
                     clean_text = text.strip().replace(" ", "").upper()
                     if len(clean_text) >= 4:
                         spz = clean_text
+                        server.publish(spz)
                         break
 
                 print(f"Přečtená SPZ: {spz}")
@@ -100,9 +104,9 @@ while True:
 
         elif modra_stisknuta:
             if pocet_zelenych_misto == 1:
-                typ_mista = "Elektro místo s nabíječkou"
+                typ_mista = "elektro"
             elif pocet_zelenych_misto == 2:
-                typ_mista = "Místo pro invalidy"
+                typ_mista = "invalida"
             else:
                 typ_mista = "Normální parkovací místo"
 
@@ -128,7 +132,6 @@ while True:
             if cas <= 0:
                 print(f"Čas vypršel! Auto s SPZ {spz} ({typ_mista}) musí odjet z parkoviště!")
                 cas = 0
-                spz = ""
                 pocet_zelenych_misto = 0
                 faze = 1
 
