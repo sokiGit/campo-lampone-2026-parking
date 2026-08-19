@@ -1,7 +1,6 @@
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
 from urllib.parse import unquote
 
 _lock = threading.Lock()
@@ -28,41 +27,54 @@ def filter_dict_keys(data, allowed_keys: set):
 
 class _GridHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        match self.path:
-            case "/debug":
-                with _lock:
-                    body = json.dumps({"cells": _latest_cells, "your_position": _latest_car_positions}).encode("utf-8")
+        try:
+            match self.path:
+                case "/debug":
+                    with _lock:
+                        body = json.dumps({"cells": _latest_cells, "your_position": _latest_car_positions}).encode("utf-8")
 
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                _ = self.wfile.write(body)
-            case _:
-                if self.path.startswith("/get_my_data?spz="):
-                    spz = unquote(self.path[len("/get_my_data?spz="):])
-                    ct_data = None
-
-                    for _, data in _car_tracking.items():
-                        if data.get("spz") == spz:
-                            ct_data = data
-                            break
-
-                    ct_data_filtered = filter_dict_keys(ct_data, {"pos_px", "pos_grid", "angle", "spz", "target_cell"})
-                    body = json.dumps({
-                        "car_tracking_data": ct_data_filtered,
-                        "cells": _latest_cells,
-                    }).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
-                    _ = self.wfile.write(body)
-                else:
-                    self.send_error(404)
+                    self.wfile.write(body)
 
-    #def log_message(self, *args):
-    #    pass  # remove console logs
+                case _:
+                    if self.path.startswith("/get_my_data?spz="):
+                        spz = unquote(self.path[len("/get_my_data?spz="):])
+                        ct_data = None
+
+                        # SAFETY FIX: Safely lock and copy state to avoid runtime dict mutations
+                        with _lock:
+                            tracking_snapshot = dict(_car_tracking)
+                            cells_snapshot = list(_latest_cells)
+
+                        for _, data in tracking_snapshot.items():
+                            if data.get("spz") == spz:
+                                print(f"Checked CT_DATA: {data}")
+                                ct_data = data
+                                break
+
+                        ct_data_filtered = filter_dict_keys(ct_data, {"pos_px", "pos_grid", "angle", "spz", "target_cell"})
+                        body = json.dumps({
+                            "car_tracking_data": ct_data_filtered,
+                            "cells": cells_snapshot,
+                        }).encode("utf-8")
+
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                    else:
+                        self.send_error(404)
+
+        except (ConnectionError, BrokenPipeError, TimeoutError):
+            # Client disconnected mid-transfer; ignore silently to prevent crashing the thread
+            pass
+
+    def log_message(self, format, *args):
+        pass  # Uncomment if you want to keep console logs completely clean
 
 
 def start(host="0.0.0.0", port=8000):

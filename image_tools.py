@@ -8,9 +8,13 @@ import requests
 from typing import Any, NotRequired, TypedDict
 
 def fetch_roofson_image(vertical_crop_distance_px: int = 450) -> MatLike | None:
-    resp = requests.get("http://roofson.lan/", timeout=30)
-    img_arr = np.frombuffer(resp.content, np.uint8)
-    img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+    img = None
+    try:
+        resp = requests.get("http://roofson.lan/", timeout=30)
+        img_arr = np.frombuffer(resp.content, np.uint8)
+        img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+    except Exception as e:
+        print(f"Failed to fetch roofson image: {e}")
     if img is None:
         return None
     return img[:vertical_crop_distance_px, :, :]   # consistent crop for grid + live frames

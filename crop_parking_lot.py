@@ -39,15 +39,17 @@ if __name__ == '__main__':
 
     # start server
 
-    data_server.start(port=8000)
+    data_server.start(port=8001)
 
     active_cars = {}
 
     while cv2.waitKey(1) != ord("q"):
 
-        img = image_tools.fetch_roofson_image()[10:-10,10:-10,:]
+        img = image_tools.fetch_roofson_image()
         if img is None:
             continue
+
+        img = img[10:-10,10:-10,:]
 
         previous_occupancies = []
 
@@ -114,26 +116,30 @@ if __name__ == '__main__':
                     print(f"Tracking new car: {car_id}")
 
                     spz_str = None
-                    required_features = ["electric_charger"]
+                    time_span = None
+                    parking_type = []
 
                     try:
-                        spz_req = requests.get("http://campo4.lan:8000/get_last_spz")
+                        spz_req = requests.get("http://campo5.lan:8080/get_last_spz")
 
                         if spz_req.status_code == 200:
                             spz_data = spz_req.json()
                             spz_str = spz_data.get("spz", None)
+                            time_span = spz_data.get("cas", None)
+                            parking_type = [spz_data.get("typ_mista", None)]
+
                             #required_features = spz_data.get("required_features", [])
                     except requests.exceptions.RequestException as e:
                         print(f"Failed to fetch SPZ data using fallback\nError: {e}")
 
-                    target_cell = car_detector.find_suitable_car_parking_spot(data_grid, required_features)
+                    target_cell = car_detector.find_suitable_car_parking_spot(data_grid, parking_type)
 
                     active_cars[car_id] = {
                         "pos_px": car_pos,
                         "pos_grid": car_grid_p,
                         "angle": angle,
                         "last_seen": time(),
-                        "spz": "debug_spz",#spz_str,
+                        "spz": "debug_spz",#spz_str, #"debug_spz" # (for testing)
                         "target_cell": target_cell
                     }
 

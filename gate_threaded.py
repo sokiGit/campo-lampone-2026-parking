@@ -1,11 +1,12 @@
 import datetime
+import json
+import re
 import threading
 import time
 import urllib.request
 import cv2
 import easyocr
 import numpy as np
-import requests
 
 import gate_server
 import image_tools
@@ -16,12 +17,11 @@ CAPTURE_URL = "http://gateson.lan/capture?delay=5"
 GATE_OPEN_URL = "http://gateson.lan/gate_in?open"
 GATE_CLOSE_URL = "http://gateson.lan/gate_in?close"
 
-# Higher pixel threshold + morphological filtering prevents background noise triggers
-MIN_PIXELS = 400
-DEBOUNCE_COOLDOWN = 0.8  # Seconds to ignore repeated LED triggers
+MIN_PIXELS = 150
+DEBOUNCE_COOLDOWN = 0.6  # Seconds to ignore repeated LED triggers
 
 
-# --- THREADED CAMERA STREAM (Prevents Video Buffer Lag) ---
+# --- THREADED CAMERA STREAM ---
 class LiveVideoCapture:
     def __init__(self, src):
         self.cap = cv2.VideoCapture(src)
@@ -55,8 +55,8 @@ class LiveVideoCapture:
 
 # --- HELPER FUNCTIONS ---
 def remove_mask_noise(mask):
-    """Applies morphological opening to eliminate scattered single-pixel noise."""
-    kernel = np.ones((3, 3), np.uint8)
+    """Applies a gentle morphological open to remove tiny isolated single-pixel noise."""
+    kernel = np.ones((2, 2), np.uint8)
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
 
@@ -78,71 +78,75 @@ zelena_sviti_predtem = False
 last_blue_press = 0.0
 last_green_press = 0.0
 
-# Async OCR flags
+# Async flags & Locks
 ocr_in_progress = False
+phase_transition_lock = 0.0
+
+
+def set_phase(new_phase, delay=1.5):
+    """
+    Safely transitions phases and locks input processing for 'delay' seconds.
+    This allows the physical LEDs to settle without triggering false positives.
+    """
+    global faze, phase_transition_lock
+    faze = new_phase
+    phase_transition_lock = time.time() + delay
 
 
 def process_ocr_async():
-    """Runs hi-res capture and EasyOCR in a background thread to keep video smooth."""
-    global spz, faze, ocr_in_progress
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"capture_{timestamp}.jpg"
-
+    """Runs image download and EasyOCR completely in the background."""
+    global spz, ocr_in_progress
     try:
-        print("1. Stahuji obrázek z kamery...")
-        urllib.request.urlretrieve(CAPTURE_URL, filename)
-        print(f"Obrázek uložen: {filename}. Spouštím OCR...")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"capture_{timestamp}.jpg"
 
-        results = reader.readtext(filename)
+        print("Stahuji snímek pro OCR na pozadí...")
+        urllib.request.urlretrieve(CAPTURE_URL, filename)
+
+        print("Spouštím OCR rozpoznávání...")
+        results = reader.readtext(filename, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
         detected_spz = ""
+        best_prob = 0.0
+
         for bbox, text, prob in results:
-            clean_text = text.strip().replace(" ", "").upper()
-            if len(clean_text) >= 4:
+            clean_text = re.sub(r"[^A-Z0-9]", "", text.upper())
+            if len(clean_text) >= 4 and prob > best_prob:
                 detected_spz = clean_text
-                break
+                best_prob = prob
 
         spz = detected_spz
-        print(f"Přečtená SPZ: '{spz}'")
-
-        # Publish initial SPZ detection to server if needed
-        if hasattr(gate_server, "publish_spz"):
-            gate_server.publish_spz(spz)
-        else:
-            gate_server.publish(spz)
-
-        # Move to Phase 2 (Time input)
-        faze = 2
-        print("Nyní zadávejte čas pomocí zelené LED (1x = +15s)...")
+        print(f"\n[OCR Dokončeno] Přečtená SPZ: '{spz}' (istota: {best_prob:.2f})")
+        gate_server.publish(spz)
 
     except Exception as e:
-        print(f"Chyba při stahování nebo OCR: {e}")
-        faze = 1  # Reset to start on error
+        print(f"Chyba při OCR: {e}")
 
     finally:
         ocr_in_progress = False
 
 
-def process_gate_and_commit(spz, cas, typ_mista):
-    """Handles opening gate, waiting, closing gate, publishing complete data, and resetting."""
-    global faze, spz_var, cas_var, pocet_zelenych_misto
-
-    print(f"Otevírám závoru pro SPZ: {spz} ({typ_mista}, čas: {cas}s)")
+def process_gate_and_commit(spz_val, cas_val, typ_mista_val):
+    """Handles opening gate, waiting, closing gate, and committing data."""
+    print(f"\nOtevírám závoru pro SPZ: {spz_val} ({typ_mista_val}, čas: {cas_val}s)")
     try:
         urllib.request.urlopen(GATE_OPEN_URL)
-        time.sleep(5)
+        time.sleep(10)
         print("Zavírám závoru.")
         urllib.request.urlopen(GATE_CLOSE_URL)
+        print("Čekám na úplné zavření závory a uklidnění obrazu...")
+        time.sleep(2)
     except Exception as e:
         print(f"Chyba při ovládání závory: {e}")
 
-    # Commit/Publish all gathered data to gate_server
-    # Modify these method calls according to your gate_server implementation!
-    if hasattr(gate_server, "publish_entry_data"):
-        gate_server.publish_entry_data(spz=spz, parking_time=cas, spot_type=typ_mista)
-    else:
-        gate_server.publish(f"ENTRY:{spz},{cas},{typ_mista}")
+    payload = json.dumps({"spz": spz_val, "cas": cas_val, "typ_mista": typ_mista_val})
+    gate_server.publish(payload)
 
-    print("Data uložena/odeslána. Připraveno pro další auto (Fáze 1).\n")
+    print("Data uložena/odeslána do gate_server. Závora zavřena.")
+    print("\n--- Připraveno pro další auto (FÁZE 1) ---")
+
+    # Give a 3-second lockout before accepting new Phase 1 inputs to ignore departing car taillights
+    set_phase(1, 3.0)
 
 
 # --- MAIN LOOP ---
@@ -163,41 +167,49 @@ while True:
 
     now = time.time()
 
-    # Blue LED edge detection with debouncing
+    # If the phase transition lock is active, inputs are ignored (but physical state is still tracked)
+    inputs_locked = now < phase_transition_lock
+
+    # Blue LED edge detection with debouncing & lockout check
     modra_stisknuta = False
     if blue_pixels > MIN_PIXELS:
         if not modra_sviti_predtem and (now - last_blue_press > DEBOUNCE_COOLDOWN):
-            modra_stisknuta = True
-            last_blue_press = now
+            if not inputs_locked:
+                modra_stisknuta = True
+                last_blue_press = now
         modra_sviti_predtem = True
     else:
         modra_sviti_predtem = False
 
-    # Green LED edge detection with debouncing
+    # Green LED edge detection with debouncing & lockout check
     zelena_stisknuta = False
     if green_pixels > MIN_PIXELS:
         if not zelena_sviti_predtem and (now - last_green_press > DEBOUNCE_COOLDOWN):
-            zelena_stisknuta = True
-            last_green_press = now
+            if not inputs_locked:
+                zelena_stisknuta = True
+                last_green_press = now
         zelena_sviti_predtem = True
     else:
         zelena_sviti_predtem = False
+
 
     # --- STATE MACHINE ---
 
     # FÁZE 1: Čekání na příjezd auta (Modrá LED)
     if faze == 1:
         if modra_stisknuta and not ocr_in_progress:
-            print("1. Modrá LED detekována (Auto přijelo). Spouštím OCR...")
+            print("\n--- FÁZE 1: Auto detekováno ---")
             ocr_in_progress = True
             cas = 0
             pocet_zelenych_misto = 0
-            faze = 10  # Interim phase while OCR runs in background
+
+            # Start heavy download and OCR thread in background
             threading.Thread(target=process_ocr_async, daemon=True).start()
 
-    # FÁZE 10: Zpracovává se OCR v pozadí (Ignoruje stisky tlačítka)
-    elif faze == 10:
-        pass
+            # Transition to FÁZE 2 with a 2.0 second lockout to ignore robot sequence noise
+            set_phase(2, 6.0)
+            print("\n--- FÁZE 2: Zadávání času ---")
+            print("Zadávejte čas pomocí zelené LED (1x = +15s), potvrďte modrou LED.")
 
     # FÁZE 2: Zadávání času (Zelená = +15s, Modrá = Potvrdit)
     elif faze == 2:
@@ -206,9 +218,13 @@ while True:
             print(f"Přidáno +15s! Celkový čas: {cas} s")
 
         elif modra_stisknuta:
-            print(f"2. Modrá LED (Čas potvrzen na {cas} s). Vyberte typ místa zelenou LED...")
+            print(f"2. Modrá LED stisknuta! Čas potvrzen na {cas} s.")
+            print("\n--- FÁZE 4: Výběr typu místa ---")
+            print("Vyberte typ místa zelenou LED (1x=elektro, 2x=invalida, jiné=normální), potvrďte modrou.")
             pocet_zelenych_misto = 0
-            faze = 4
+
+            # Transition to FÁZE 4 with a 1.5 second lockout
+            set_phase(4, 1.5)
 
     # FÁZE 4: Výběr místa (Zelená = přepínání, Modrá = Potvrdit & Otevřít závoru)
     elif faze == 4:
@@ -224,20 +240,34 @@ while True:
             else:
                 typ_mista = "Normální parkovací místo"
 
-            print(f"3. Modrá LED (Místo potvrzeno: {typ_mista})")
+            print(f"3. Modrá LED stisknuta! Místo potvrzeno: {typ_mista}")
 
-            # Execute gate opening and data commit in a separate thread so it doesn't block
+            # Transition to FÁZE 5 to lock inputs while gate is operating
+            set_phase(5, 0.0)
+
             threading.Thread(
                 target=process_gate_and_commit,
                 args=(spz, cas, typ_mista),
                 daemon=True,
             ).start()
 
-            # Immediately reset to Phase 1 so the next car can enter right away!
-            faze = 1
+    # FÁZE 5: Závora v provozu (Bypassuje detekci LED dokud auto neodjede)
+    elif faze == 5:
+        pass
 
-    # Display video frame for debug
-    cv2.imshow("Puvodni", mask_blue)
+
+    # Live debug overlay directly on display
+    debug_frame = image.copy()
+
+    # Display lockout status in top right corner if active
+    if inputs_locked:
+        cv2.putText(debug_frame, "VSTUPY ZAMCENY", (debug_frame.shape[1] - 150, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+    cv2.putText(debug_frame, f"F: {faze}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    cv2.putText(debug_frame, f"B: {blue_pixels} / {MIN_PIXELS}", (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    cv2.putText(debug_frame, f"G: {green_pixels} / {MIN_PIXELS}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+    cv2.imshow("Gate Camera Feed", debug_frame)
     if cv2.waitKey(1) == ord("q"):
         break
 
