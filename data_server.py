@@ -48,7 +48,7 @@ class _GridHandler(BaseHTTPRequestHandler):
                             ct_data = data
                             break
 
-                    ct_data_filtered = filter_dict_keys(ct_data, {"pos_px", "pos_grid", "angle", "spz"})
+                    ct_data_filtered = filter_dict_keys(ct_data, {"pos_px", "pos_grid", "angle", "spz", "target_cell"})
                     body = json.dumps({
                         "car_tracking_data": ct_data_filtered,
                         "cells": _latest_cells,
