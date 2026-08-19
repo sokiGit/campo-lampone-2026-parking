@@ -28,6 +28,11 @@ typ_mista = ""
 
 gate_server.start()
 
+# Pomocná funkce pro vyprázdnění bufferu kamery
+def vycistit_buffer_kamery(cap, pocet_snimku=15):
+    for _ in range(pocet_snimku):
+        cap.grab()
+
 while True:
     ret, image = cap.read()
     if not ret:
@@ -85,22 +90,37 @@ while True:
             except Exception as e:
                 print(f"Chyba při stahování nebo OCR: {e}")
 
-    # faze 2 3
+            # Delay a vyčištění vyrovnávací paměti kamery po dlouhé operaci (OCR)
+            time.sleep(1.0)
+            vycistit_buffer_kamery(cap, 25)
+            modra_sviti_predtem = False
+            zelena_sviti_predtem = False
+
+    # faze 2
     elif faze == 2:
         if zelena_stisknuta:
             cas += 15
             print(f"Přidáno +15s! Celkový čas: {cas} s")
+            time.sleep(1.0)
+            vycistit_buffer_kamery(cap, 15)
+            zelena_sviti_predtem = False
 
         elif modra_stisknuta:
             print(f"2. Modrá LED (Čas potvrzen na {cas} s). Vyberte typ místa zelenou LED...")
             pocet_zelenych_misto = 0
             faze = 4
+            time.sleep(1.0)
+            vycistit_buffer_kamery(cap, 15)
+            modra_sviti_predtem = False
 
-    # faze 5
+    # faze 4
     elif faze == 4:
         if zelena_stisknuta:
             pocet_zelenych_misto += 1
             print(f"Zelená LED pro místo stisknuta ({pocet_zelenych_misto}x)")
+            time.sleep(1.0)
+            vycistit_buffer_kamery(cap, 15)
+            zelena_sviti_predtem = False
 
         elif modra_stisknuta:
             if pocet_zelenych_misto == 1:
@@ -119,9 +139,15 @@ while True:
             print("Zavírám závoru.")
             urllib.request.urlopen("http://gateson.lan/gate_in?close")
 
+            # Vyčištění starých snímků nastřádaných během 5s čekání u závory
+            time.sleep(1.0)
+            vycistit_buffer_kamery(cap, 25)
+
             posledni_sekunda = time.time()
             faze = 5
             print(f"Začíná odpočet času! Zbývá: {cas} s")
+            modra_sviti_predtem = False
+            zelena_sviti_predtem = False
 
     # faze 5
     elif faze == 5:
@@ -134,6 +160,8 @@ while True:
                 cas = 0
                 pocet_zelenych_misto = 0
                 faze = 1
+                time.sleep(1.0)
+                vycistit_buffer_kamery(cap, 15)
 
     cv2.imshow("Puvodni", mask_blue)
 
